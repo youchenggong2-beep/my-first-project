@@ -1,0 +1,95 @@
+# 气动软体手指局部转角 θi 的二分法求解器
+# 物理模型来自论文表 4.2 第 1 个腔体参数
+
+import math
+import matplotlib.pyplot as plt
+
+# 材料参数 (单位: MPa)
+C10 = 0.15
+C20 = 0.012
+C30 = 0.0015
+
+# 几何参数 (单位: mm、mm^3)
+Vdef_i = 12.0
+y_in_i = 2.1
+wg_i = 0.7
+
+# 计算项
+alpha_i = y_in_i / wg_i
+J_i = 1.33 * 15.0 * 3.7
+
+# 变量关系
+# λi = 1 + αi * θi
+# I1,i = λi^2 + 2/λi
+
+
+def f_theta(theta, P_mpa):
+    """根据题目给出的方程计算 f(θi, P)。"""
+    lam = 1.0 + alpha_i * theta
+    I1_i = lam * lam + 2.0 / lam
+    # 这里的应力-应变关系部分
+    material_term = C10 + 2.0 * C20 * (I1_i - 3.0) + 3.0 * C30 * (I1_i - 3.0) ** 2
+    deformation_term = (2.0 * lam - 2.0 / (lam * lam)) * alpha_i
+    return Vdef_i * material_term * deformation_term - P_mpa * J_i
+
+
+def bisection(P_mpa, lower=0.0, upper=1.0, tol=1e-9, max_iter=100):
+    """二分法求解 θ，使 f(θ, P) = 0。"""
+    f_low = f_theta(lower, P_mpa)
+    f_up = f_theta(upper, P_mpa)
+
+    # 如果上界不满足符号相反，则自动扩大右边界
+    while f_low * f_up > 0 and upper < 10.0:
+        upper *= 2.0
+        f_up = f_theta(upper, P_mpa)
+
+    if f_low * f_up > 0:
+        raise ValueError(f"未找到合适的初始区间，P={P_mpa} MPa, f(lower)={f_low}, f(upper)={f_up}")
+
+    for _ in range(max_iter):
+        mid = 0.5 * (lower + upper)
+        f_mid = f_theta(mid, P_mpa)
+        if abs(f_mid) < tol:
+            return mid
+        if f_low * f_mid <= 0:
+            upper = mid
+            f_up = f_mid
+        else:
+            lower = mid
+            f_low = f_mid
+    return 0.5 * (lower + upper)
+
+
+def solve_pressure_range(P_start_kpa=0, P_end_kpa=100, steps=101):
+    """计算压力范围内的 θi 值。"""
+    pressures_kpa = [P_start_kpa + i * (P_end_kpa - P_start_kpa) / (steps - 1) for i in range(steps)]
+    angles_rad = []
+
+    for P_kpa in pressures_kpa:
+        P_mpa = P_kpa / 1000.0
+        if P_kpa == 0:
+            angles_rad.append(0.0)
+            continue
+        theta = bisection(P_mpa)
+        angles_rad.append(theta)
+
+    return pressures_kpa, angles_rad
+
+
+def plot_results(pressures_kpa, angles_rad):
+    """绘制气压-弯曲角度曲线。"""
+    angles_deg = [math.degrees(theta) for theta in angles_rad]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(pressures_kpa, angles_deg, marker='o', linestyle='-', color='tab:blue')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.title('气压(kPa) - 弯曲角度(deg) 曲线')
+    plt.xlabel('气压 (kPa)')
+    plt.ylabel('局部转角 θi (deg)')
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == '__main__':
+    pressures_kpa, angles_rad = solve_pressure_range(P_start_kpa=0, P_end_kpa=100, steps=101)
+    plot_results(pressures_kpa, angles_rad)
